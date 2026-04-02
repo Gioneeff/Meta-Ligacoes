@@ -689,7 +689,7 @@ function updateLojaButtons() {
 // FETCH DATA from Google Sheets (CSV export)
 // ──────────────────────────────────────────────
 async function fetchSheet(tabName) {
-  const url = `https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
+const url = `https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/export?format=csv&sheet=${encodeURIComponent(tabName)}`;
   const r = await fetch(url);
   if (!r.ok) throw new Error(`Erro ao buscar aba "${tabName}"`);
   return parseCSV(await r.text());
