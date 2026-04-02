@@ -823,9 +823,17 @@ function smartSplitCSV(line) {
   return result;
 }
 
+// Helper: find value by possible key names
+function getVal(obj, keys) {
+  for (const k of keys) {
+    const found = Object.keys(obj).find(ok => ok.trim().toLowerCase() === k.toLowerCase());
+    if (found && obj[found] !== undefined && obj[found] !== '') return obj[found];
+  }
+  return '';
+}
+
 async function fetchData() {
-  if (!CONFIG.sheetId) {
-    openConfig();
+  if (!CONFIG.scriptUrl) {
     return;
   }
 
@@ -840,15 +848,6 @@ async function fetchData() {
       fetchSheet('Realizadas'),
       fetchSheet('Config'),
     ]);
-
-    // Helper: find value by possible key names
-    function getVal(obj, keys) {
-      for (const k of keys) {
-        const found = Object.keys(obj).find(ok => ok.trim().toLowerCase() === k.toLowerCase());
-        if (found && obj[found] !== undefined && obj[found] !== '') return obj[found];
-      }
-      return '';
-    }
 
     // parse vendedores
     DATA.vendedores = vendedoresRaw.map(r => ({
@@ -1148,4 +1147,186 @@ function renderChart(sellers) {
     },
     options: {
       responsive: true,
-      interaction: { mod
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: { color: '#6b7280', font: { family: 'DM Mono', size: 11 }, boxWidth: 16, padding: 20 }
+        },
+        tooltip: {
+          backgroundColor: '#12151c',
+          borderColor: '#232840',
+          borderWidth: 1,
+          titleColor: '#e8eaf0',
+          bodyColor: '#6b7280',
+          titleFont: { family: 'DM Mono' },
+          bodyFont: { family: 'DM Mono', size: 12 },
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: '#1a1f2e' },
+          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 10 }
+        },
+        y: {
+          grid: { color: '#1a1f2e' },
+          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } }
+        }
+      }
+    }
+  });
+}
+
+// ──────────────────────────────────────────────
+// FILTER
+// ──────────────────────────────────────────────
+function setFilter(loja, btn) {
+  filterLoja = loja;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (DATA.vendedores.length) renderAll();
+}
+
+// ──────────────────────────────────────────────
+// AUTO REFRESH
+// ──────────────────────────────────────────────
+function setupAutoRefresh() {
+  if (autoInterval) clearInterval(autoInterval);
+  if (CONFIG.interval > 0) {
+    autoInterval = setInterval(fetchData, CONFIG.interval * 1000);
+  }
+}
+
+// ──────────────────────────────────────────────
+// MODAL
+// ──────────────────────────────────────────────
+function openConfig() { document.getElementById('configModal').classList.add('open'); }
+function closeConfig() { document.getElementById('configModal').classList.remove('open'); }
+document.getElementById('configModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeConfig();
+});
+
+// ──────────────────────────────────────────────
+// TOAST
+// ──────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type='success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast ${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+// ──────────────────────────────────────────────
+// DEMO DATA (quando não há Sheets configurado)
+// ──────────────────────────────────────────────
+function loadDemo() {
+  const nomes = [
+    ['Carlos Silva','A'],['Ana Souza','A'],['João Pedro','A'],
+    ['Maria Lima','B'],['Rafael Costa','B'],['Fernanda Alves','B'],
+    ['Bruno Moura','C'],['Juliana Rocha','C'],['Diego Santos','C'],['Patrícia Neves','C']
+  ];
+
+  DATA.vendedores = nomes.map(([nome, loja]) => ({ nome, loja }));
+  DATA.metas = {};
+  nomes.forEach(([nome]) => DATA.metas[nome] = 80 + Math.floor(Math.random()*40));
+  DATA.realizadas = {};
+  const diasUteis = [1,2,3,5,6,7,8,9,12,13,14,15,16,19,20,21,22,23,26,27,28];
+  DATA.diasUteis = diasUteis;
+  DATA.diasPassados = 15;
+  DATA.config = { Mes: String(new Date().getMonth()+1), Ano: String(new Date().getFullYear()) };
+
+  DATA.metaDiaria = {};
+  nomes.forEach(([nome]) => {
+    DATA.metaDiaria[nome] = DATA.metas[nome] / diasUteis.length;
+    const dias = diasUteis.slice(0, DATA.diasPassados);
+    DATA.realizadas[nome] = dias.map(d => ({
+      dia: d,
+      qtd: Math.max(0, (DATA.metaDiaria[nome] * (0.7 + Math.random()*0.7)))
+    }));
+  });
+
+  calcularDiasUteis();
+  document.getElementById('header-sub').textContent = `${DATA.vendedores.length} vendedores · 3 concessionárias · MODO DEMO`;
+  document.getElementById('status-dot').textContent = 'Modo demo';
+  renderAll();
+}
+
+// ──────────────────────────────────────────────
+// AUTH
+// ──────────────────────────────────────────────
+let selectedRole = 'admin';
+
+function selectRole(role) {
+  selectedRole = role;
+  document.getElementById('pill-admin').classList.toggle('active', role==='admin');
+  document.getElementById('pill-viewer').classList.toggle('active', role==='viewer');
+  document.getElementById('login-user').value = role === 'admin' ? 'admin' : 'viewer';
+}
+
+function doLogin() {
+  const user = document.getElementById('login-user').value.trim().toLowerCase();
+  const pass = document.getElementById('login-pass').value;
+  const err  = document.getElementById('login-err');
+
+  const found = USERS[user];
+  if (!found || found.senha !== pass) {
+    err.textContent = 'Usuário ou senha incorretos.';
+    document.getElementById('login-pass').value = '';
+    return;
+  }
+
+  SESSION = { user, role: found.role, nome: found.nome };
+  sessionStorage.setItem('session', JSON.stringify(SESSION));
+
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  document.getElementById('user-nome').textContent = found.nome;
+  document.getElementById('user-role-tag').textContent = found.role === 'admin' ? '· admin' : '· viewer';
+
+  // Admin sees config button
+  if (found.role === 'admin') {
+    document.getElementById('config-btn').style.display = '';
+  }
+
+  err.textContent = '';
+  loadConfig();
+  fetchData();
+  setupAutoRefresh();
+}
+
+function doLogout() {
+  SESSION = null;
+  sessionStorage.removeItem('session');
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('main-app').style.display = 'none';
+  document.getElementById('login-pass').value = '';
+  if (autoInterval) clearInterval(autoInterval);
+}
+
+// Restore session on reload
+(function initAuth() {
+  const saved = sessionStorage.getItem('session');
+  if (saved) {
+    try {
+      const s = JSON.parse(saved);
+      if (USERS[s.user]) {
+        SESSION = s;
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('main-app').style.display = 'block';
+        document.getElementById('user-nome').textContent = s.nome;
+        document.getElementById('user-role-tag').textContent = s.role === 'admin' ? '· admin' : '· viewer';
+        if (s.role === 'admin') document.getElementById('config-btn').style.display = '';
+        loadConfig();
+        fetchData();
+        setupAutoRefresh();
+        return;
+      }
+    } catch(e) {}
+  }
+  // Show login
+  document.getElementById('login-screen').style.display = 'flex';
+})();
+</script>
+</body>
+</html>
