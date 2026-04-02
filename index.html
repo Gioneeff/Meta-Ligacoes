@@ -453,11 +453,101 @@
   .scrollable::-webkit-scrollbar { width: 4px; }
   .scrollable::-webkit-scrollbar-track { background: transparent; }
   .scrollable::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── LOGIN SCREEN ── */
+  #login-screen {
+    position: fixed; inset: 0; z-index: 999;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  #login-screen::before {
+    content: '';
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse 70% 50% at 30% 20%, rgba(59,130,246,0.1) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 40% at 70% 80%, rgba(240,192,64,0.07) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .login-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px 36px;
+    width: 100%; max-width: 380px;
+    position: relative; z-index: 1;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  }
+  .login-logo {
+    font-family: var(--font-display);
+    font-size: 2rem; letter-spacing: 3px;
+    color: var(--text); margin-bottom: 4px;
+  }
+  .login-logo span { color: var(--accent); }
+  .login-sub { font-size: 0.78rem; color: var(--muted); font-family: var(--font-mono); margin-bottom: 32px; }
+  .login-label { font-size: 0.72rem; color: var(--muted); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px; }
+  .login-input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); padding: 12px 16px;
+    font-family: var(--font-body); font-size: 0.95rem;
+    transition: border-color 0.2s; margin-bottom: 16px;
+  }
+  .login-input:focus { outline: none; border-color: var(--accent); }
+  .login-btn {
+    width: 100%; background: var(--accent); color: #000; border: none;
+    border-radius: 8px; padding: 13px; font-family: var(--font-display);
+    font-size: 1.1rem; letter-spacing: 1px; cursor: pointer;
+    transition: background 0.2s; margin-top: 4px;
+  }
+  .login-btn:hover { background: #e0b030; }
+  .login-err { color: var(--danger); font-size: 0.8rem; font-family: var(--font-mono); margin-top: 10px; min-height: 20px; text-align: center; }
+  .login-roles { display: flex; gap: 10px; margin-bottom: 20px; }
+  .role-pill {
+    flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--muted); font-family: var(--font-mono);
+    font-size: 0.72px; cursor: pointer; text-align: center; transition: all 0.2s;
+    font-size: 0.72rem;
+  }
+  .role-pill.active { border-color: var(--accent); color: var(--accent); background: rgba(240,192,64,0.08); }
+
+  /* user badge in header */
+  .user-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 12px; font-family: var(--font-mono); font-size: 0.75rem;
+  }
+  .user-badge .role-tag { color: var(--accent); }
+  .logout-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.8rem; margin-left: 4px; }
+  .logout-btn:hover { color: var(--danger); }
 </style>
 </head>
 <body>
 
-<div class="container">
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">METAS <span>LIG.</span></div>
+    <div class="login-sub">Dashboard de Ligações · Acesso Restrito</div>
+
+    <div class="login-roles">
+      <div class="role-pill active" id="pill-admin" onclick="selectRole('admin')">👑 Admin</div>
+      <div class="role-pill" id="pill-viewer" onclick="selectRole('viewer')">👁 Visualizador</div>
+    </div>
+
+    <label class="login-label">Usuário</label>
+    <input class="login-input" id="login-user" type="text" placeholder="usuário" autocomplete="username">
+
+    <label class="login-label">Senha</label>
+    <input class="login-input" id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password"
+      onkeydown="if(event.key==='Enter') doLogin()">
+
+    <button class="login-btn" onclick="doLogin()">ENTRAR</button>
+    <div class="login-err" id="login-err"></div>
+  </div>
+</div>
+
+
+<div class="container" id="main-app" style="display:none">
 
   <!-- HEADER -->
   <header>
@@ -468,7 +558,12 @@
     <div class="header-right">
       <div class="badge-mes" id="badge-mes">---</div>
       <div class="status-dot" id="status-dot">Aguardando</div>
-      <button class="config-btn" onclick="openConfig()">⚙ Configurar Sheets</button>
+      <div class="user-badge" id="user-badge">
+        <span id="user-nome">—</span>
+        <span class="role-tag" id="user-role-tag"></span>
+        <button class="logout-btn" onclick="doLogout()" title="Sair">✕</button>
+      </div>
+      <button class="config-btn" id="config-btn" onclick="openConfig()" style="display:none">⚙ Config</button>
     </div>
   </header>
 
@@ -625,8 +720,19 @@
 // ──────────────────────────────────────────────
 // STATE
 // ──────────────────────────────────────────────
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwCa8XHgZgcsZHwgctYQi_4agC3cMyDpCKdq2fqOKDrE0kYqV3xmR_twDK5fiGFjAQ/exec';
+
+// ── USERS (admin pode ver botão config; viewer só visualiza) ──
+const USERS = {
+  'admin': { senha: 'metas2024', role: 'admin', nome: 'Administrador' },
+  'viewer': { senha: 'ver123',   role: 'viewer', nome: 'Visualizador' },
+};
+
+let SESSION = null; // { user, role, nome }
+
 let CONFIG = {
   sheetId: '1yIYgGhAz9eaBRVafoXdOtr73OtRFdNDkvvrGnSjSPJU',
+  scriptUrl: SCRIPT_URL,
   interval: 300,
   lojas: { A: 'Loja A', B: 'Loja B', C: 'Loja C' }
 };
@@ -689,12 +795,10 @@ function updateLojaButtons() {
 // FETCH DATA from Google Sheets (CSV export)
 // ──────────────────────────────────────────────
 async function fetchSheet(tabName) {
-  const sheetUrl = `https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
-  const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(sheetUrl)}`;
-  const r = await fetch(proxy);
+  const url = `${CONFIG.scriptUrl}?sheet=${encodeURIComponent(tabName)}`;
+  const r = await fetch(url);
   if (!r.ok) throw new Error(`Erro ao buscar aba "${tabName}"`);
-  const json = await r.json();
-  return parseCSV(json.contents);
+  return await r.json();
 }
 
 function parseCSV(text) {
@@ -1141,15 +1245,80 @@ function loadDemo() {
 }
 
 // ──────────────────────────────────────────────
-// INIT
+// AUTH
 // ──────────────────────────────────────────────
-loadConfig();
-if (CONFIG.sheetId) {
+let selectedRole = 'admin';
+
+function selectRole(role) {
+  selectedRole = role;
+  document.getElementById('pill-admin').classList.toggle('active', role==='admin');
+  document.getElementById('pill-viewer').classList.toggle('active', role==='viewer');
+  document.getElementById('login-user').value = role === 'admin' ? 'admin' : 'viewer';
+}
+
+function doLogin() {
+  const user = document.getElementById('login-user').value.trim().toLowerCase();
+  const pass = document.getElementById('login-pass').value;
+  const err  = document.getElementById('login-err');
+
+  const found = USERS[user];
+  if (!found || found.senha !== pass) {
+    err.textContent = 'Usuário ou senha incorretos.';
+    document.getElementById('login-pass').value = '';
+    return;
+  }
+
+  SESSION = { user, role: found.role, nome: found.nome };
+  sessionStorage.setItem('session', JSON.stringify(SESSION));
+
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  document.getElementById('user-nome').textContent = found.nome;
+  document.getElementById('user-role-tag').textContent = found.role === 'admin' ? '· admin' : '· viewer';
+
+  // Admin sees config button
+  if (found.role === 'admin') {
+    document.getElementById('config-btn').style.display = '';
+  }
+
+  err.textContent = '';
+  loadConfig();
   fetchData();
   setupAutoRefresh();
-} else {
-  loadDemo();
 }
+
+function doLogout() {
+  SESSION = null;
+  sessionStorage.removeItem('session');
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('main-app').style.display = 'none';
+  document.getElementById('login-pass').value = '';
+  if (autoInterval) clearInterval(autoInterval);
+}
+
+// Restore session on reload
+(function initAuth() {
+  const saved = sessionStorage.getItem('session');
+  if (saved) {
+    try {
+      const s = JSON.parse(saved);
+      if (USERS[s.user]) {
+        SESSION = s;
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('main-app').style.display = 'block';
+        document.getElementById('user-nome').textContent = s.nome;
+        document.getElementById('user-role-tag').textContent = s.role === 'admin' ? '· admin' : '· viewer';
+        if (s.role === 'admin') document.getElementById('config-btn').style.display = '';
+        loadConfig();
+        fetchData();
+        setupAutoRefresh();
+        return;
+      }
+    } catch(e) {}
+  }
+  // Show login
+  document.getElementById('login-screen').style.display = 'flex';
+})();
 </script>
 </body>
 </html>
